@@ -21,7 +21,13 @@ st.markdown("""
 .semantic {border-left:5px solid #3498db;}
 .anaphoric {border-left:5px solid #9b59b6;}
 .pragmatic {border-left:5px solid #e74c3c;}
-.highlight {background-color:#ffd54f;padding:2px 4px;border-radius:4px;}
+.highlight {
+    background-color: #ffd54f;
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-weight: bold;
+    color: black;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -32,7 +38,7 @@ text = st.text_area("Enter a sentence or paragraph:")
 # ---------- HIGHLIGHT ----------
 def highlight_words(sentence, words):
     for w in words:
-        sentence = sentence.replace(w, f"<span class='highlight'>{w}</span>")
+        sentence = sentence.replace(w, f"<span class='highlight'><b>{w}</b></span>")
     return sentence
 
 # ---------- LEXICAL ----------

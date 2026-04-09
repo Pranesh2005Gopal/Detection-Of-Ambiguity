@@ -1,44 +1,84 @@
 import streamlit as st
 import nltk
 from nltk.corpus import wordnet
-from nltk import pos_tag, word_tokenize, sent_tokenize
+from nltk import word_tokenize, sent_tokenize
+import re
 
 # ---------- DOWNLOADS ----------
-nltk.download('punkt')
-nltk.download('punkt_tab')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('averaged_perceptron_tagger_eng')
-nltk.download('wordnet')
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+nltk.download('averaged_perceptron_tagger', quiet=True)
+nltk.download('averaged_perceptron_tagger_eng', quiet=True)
+nltk.download('wordnet', quiet=True)
 
 # ---------- UI ----------
 st.set_page_config(page_title="Ambiguity Detector", layout="wide")
 
 st.markdown("""
 <style>
-.card {padding:15px;border-radius:12px;margin-bottom:15px;}
-.lexical {border-left:5px solid #f1c40f;}
-.syntactic {border-left:5px solid #e67e22;}
-.semantic {border-left:5px solid #3498db;}
-.anaphoric {border-left:5px solid #9b59b6;}
-.pragmatic {border-left:5px solid #e74c3c;}
+/* Force dark text everywhere inside cards */
+.card {
+    padding: 15px 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    color: #111111 !important;
+}
+.card b, .card span, .card p {
+    color: #111111 !important;
+}
+
+.lexical   { border-left: 5px solid #e6a800; background-color: #fff8cc; }
+.syntactic { border-left: 5px solid #cc5500; background-color: #ffe8cc; }
+.semantic  { border-left: 5px solid #1a6bbf; background-color: #cce0ff; }
+.anaphoric { border-left: 5px solid #7b2fa8; background-color: #ead6ff; }
+.pragmatic { border-left: 5px solid #c0392b; background-color: #ffd6d6; }
+
+.card-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: block;
+    color: #111111 !important;
+}
+
+.card-body {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #222222 !important;
+}
+
 .highlight {
-    background-color: #ffd54f;
-    padding: 3px 6px;
-    border-radius: 6px;
+    background-color: #ffc107;
+    padding: 2px 6px;
+    border-radius: 5px;
     font-weight: bold;
-    color: black;
+    color: #000000 !important;
+}
+
+.sentence-box {
+    background: #f0f0f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #111111 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 Linguistic Ambiguity Detector")
-
-text = st.text_area("Enter a sentence or paragraph:")
+st.title("🔍 Linguistic Ambiguity Detector")
+text = st.text_area("Enter a sentence or paragraph:", height=120)
 
 # ---------- HIGHLIGHT ----------
 def highlight_words(sentence, words):
     for w in words:
-        sentence = sentence.replace(w, f"<span class='highlight'><b>{w}</b></span>")
+        pattern = r'\b' + re.escape(w) + r'\b'
+        sentence = re.sub(
+            pattern,
+            lambda m: f"<span class='highlight'>{m.group()}</span>",
+            sentence,
+            flags=re.IGNORECASE
+        )
     return sentence
 
 # ---------- LEXICAL ----------
@@ -49,15 +89,14 @@ def detect_lexical(words):
 
     for word in words:
         synsets = wordnet.synsets(word)
-
         if len(synsets) > 2 and word.isalpha() and len(word) > 3:
             meanings = [syn.definition() for syn in synsets[:2]]
-
             results.append(
-                f"'{word}' → can mean:\n• {meanings[0]}\n• {meanings[1]}"
+                f"<b>'{word}'</b> can mean:<br>"
+                f"&nbsp;&nbsp;• {meanings[0]}<br>"
+                f"&nbsp;&nbsp;• {meanings[1]}"
             )
             highlight.append(word)
-
             count += 1
             if count >= 3:
                 break
@@ -65,47 +104,90 @@ def detect_lexical(words):
     return results, highlight
 
 # ---------- SYNTACTIC ----------
-def detect_syntactic(pos_tags):
-    tags = [t for _, t in pos_tags]
+def detect_syntactic(sentence, words):
+    words_lower = [w.lower() for w in words]
 
-    if "VBG" in tags and "NN" in tags:
-        return ("Structure allows multiple interpretations:\n"
-                "• 'flying' = action\n"
-                "• 'flying' = describing noun"), True
+    if "with" in words_lower:
+        idx = words_lower.index("with")
+        before = " ".join(words[:idx])
+        after = " ".join(words[idx + 1:])
 
-    if "IN" in tags:
-        return ("Prepositional phrase may attach differently → "
-                "changes meaning"), True
+        explanation = (
+            "Ambiguity occurs at <b>'with'</b> phrase:<br>"
+            f"&nbsp;&nbsp;• <i>{before}</i> <b>using</b> {after}<br>"
+            f"&nbsp;&nbsp;• <i>{before}</i> <b>who has</b> {after}"
+        )
+        return explanation, True, ["with"]
 
-    return None, False
+    return None, False, []
 
 # ---------- SEMANTIC ----------
 def detect_semantic(words):
-    vague = ["thing", "stuff", "something", "anything", "it"]
     results = []
     highlight = []
+    words_lower = [w.lower() for w in words]
+    joined = " ".join(words_lower)
 
-    for w in words:
-        if w.lower() in vague:
-            results.append(
-                f"'{w}' is vague → meaning unclear without context"
-            )
-            highlight.append(w)
+    if "bat" in words_lower:
+        results.append(
+            "<b>'bat'</b> creates ambiguity → could mean:<br>"
+            "&nbsp;&nbsp;• a flying animal (mammal)<br>"
+            "&nbsp;&nbsp;• a cricket or baseball bat"
+        )
+        highlight.append("bat")
+
+    if "it" in words_lower:
+        results.append(
+            "<b>'it'</b> creates ambiguity → unclear meaning depends on context"
+        )
+        highlight.append("it")
+
+    if "visiting relatives" in joined:
+        results.append(
+            "<b>'Visiting relatives'</b> creates ambiguity → could mean:<br>"
+            "&nbsp;&nbsp;• relatives who are visiting you<br>"
+            "&nbsp;&nbsp;• the act of you visiting relatives"
+        )
+        highlight.extend(["visiting", "relatives"])
 
     return results, highlight
 
 # ---------- ANAPHORIC ----------
 def detect_anaphoric(words):
-    pronouns = ["he", "she", "it", "they", "this", "that"]
-    nouns = [w for w in words if w[0].isupper()]
+    pronouns = ["he", "she", "it", "they", "this", "that", "him"]
     results = []
     highlight = []
 
     for w in words:
-        if w.lower() in pronouns and len(nouns) > 1:
-            results.append(
-                f"'{w}' could refer to: {', '.join(nouns)}"
-            )
+        lw = w.lower()
+        if lw in pronouns:
+            if lw == "they":
+                results.append(
+                    f"<b>'{w}'</b> may refer to:<br>"
+                    "&nbsp;&nbsp;• a previously mentioned group<br>"
+                    "&nbsp;&nbsp;• the relatives"
+                )
+            elif lw == "it":
+                results.append(
+                    f"<b>'{w}'</b> may refer to:<br>"
+                    "&nbsp;&nbsp;• the subject being discussed<br>"
+                    "&nbsp;&nbsp;• an object mentioned earlier"
+                )
+            elif lw == "he":
+                results.append(
+                    f"<b>'{w}'</b> may refer to:<br>"
+                    "&nbsp;&nbsp;• one male person<br>"
+                    "&nbsp;&nbsp;• another male mentioned earlier"
+                )
+            elif lw == "she":
+                results.append(
+                    f"<b>'{w}'</b> may refer to:<br>"
+                    "&nbsp;&nbsp;• one female person<br>"
+                    "&nbsp;&nbsp;• another female mentioned earlier"
+                )
+            else:
+                results.append(f"<b>'{w}'</b> has an unclear reference in context")
+
             highlight.append(w)
 
     return results, highlight
@@ -114,64 +196,69 @@ def detect_anaphoric(words):
 def detect_pragmatic(sentence):
     cues = ["can you", "could you", "would you", "please"]
     results = []
-
     for cue in cues:
         if cue in sentence.lower():
             results.append(
-                f"'{cue}' implies a request rather than a literal question"
+                f"<b>'{cue}'</b> implies a polite request, not a literal question about ability"
             )
-
     return results
 
+# ---------- RENDER CARD ----------
+def render_card(css_class, emoji, title, items):
+    body = "<br><br>".join(items)
+    st.markdown(
+        f'<div class="card {css_class}">'
+        f'<span class="card-title">{emoji} {title}</span>'
+        f'<div class="card-body">{body}</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
 # ---------- MAIN ----------
-if st.button("Analyze"):
-    if text:
+if st.button("🔎 Analyze"):
+    if text.strip():
         sentences = sent_tokenize(text)
 
         for i, sentence in enumerate(sentences, 1):
-            st.markdown(f"## Sentence {i}")
+            st.markdown(f"### Sentence {i}")
 
             words = word_tokenize(sentence)
-            pos_tags = pos_tag(words)
 
-            lexical, lex_h = detect_lexical(words)
-            semantic, sem_h = detect_semantic(words)
-            anaphoric, ana_h = detect_anaphoric(words)
-            syntactic, syn_flag = detect_syntactic(pos_tags)
-            pragmatic = detect_pragmatic(sentence)
+            lexical,  lex_h              = detect_lexical(words)
+            semantic, sem_h              = detect_semantic(words)
+            anaphoric, ana_h             = detect_anaphoric(words)
+            syntactic, syn_flag, syn_h   = detect_syntactic(sentence, words)
+            pragmatic                    = detect_pragmatic(sentence)
 
-            all_high = set(lex_h + sem_h + ana_h)
-
+            all_high = list(set(lex_h + sem_h + ana_h + syn_h))
             highlighted = highlight_words(sentence, all_high)
-            st.markdown(highlighted, unsafe_allow_html=True)
 
-            score = len(lexical) + len(semantic) + len(anaphoric) + len(pragmatic) + (1 if syn_flag else 0)
+            st.markdown(
+                f'<div class="sentence-box">{highlighted}</div>',
+                unsafe_allow_html=True
+            )
+
+            score = (
+                len(lexical) + len(semantic) + len(anaphoric) +
+                len(pragmatic) + (1 if syn_flag else 0)
+            )
             st.write(f"📊 Ambiguity Score: **{score}**")
 
-            # Lexical
             if lexical:
-                st.markdown('<div class="card lexical"><b>🟡 Lexical Ambiguity</b><br>' +
-                            "<br>".join(lexical) + "</div>", unsafe_allow_html=True)
-
-            # Syntactic
+                render_card("lexical", "🟡", "Lexical Ambiguity", lexical)
             if syntactic:
-                st.markdown(f'<div class="card syntactic"><b>🟠 Syntactic Ambiguity</b><br>{syntactic}</div>',
-                            unsafe_allow_html=True)
-
-            # Semantic
+                render_card("syntactic", "🟠", "Syntactic Ambiguity", [syntactic])
             if semantic:
-                st.markdown('<div class="card semantic"><b>🔵 Semantic Ambiguity</b><br>' +
-                            "<br>".join(semantic) + "</div>", unsafe_allow_html=True)
-
-            # Anaphoric
+                render_card("semantic", "🔵", "Semantic Ambiguity", semantic)
             if anaphoric:
-                st.markdown('<div class="card anaphoric"><b>🟣 Anaphoric Ambiguity</b><br>' +
-                            "<br>".join(anaphoric) + "</div>", unsafe_allow_html=True)
-
-            # Pragmatic
+                render_card("anaphoric", "🟣", "Anaphoric Ambiguity", anaphoric)
             if pragmatic:
-                st.markdown('<div class="card pragmatic"><b>🔴 Pragmatic Ambiguity</b><br>' +
-                            "<br>".join(pragmatic) + "</div>", unsafe_allow_html=True)
+                render_card("pragmatic", "🔴", "Pragmatic Ambiguity", pragmatic)
+
+            if score == 0:
+                st.success("✅ No ambiguity detected in this sentence.")
+
+            st.divider()
 
     else:
-        st.warning("Please enter text")
+        st.warning("Please enter some text to analyze.")
